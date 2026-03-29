@@ -14,7 +14,8 @@ curl -i -X POST -H "Accept:application/json" -H "Content-Type:application/json" 
     "topic.prefix": "pg-server",
     "table.include.list": "public.products",
     "tombstones.on.delete": "true",
-    "plugin.name": "pgoutput"
+    "plugin.name": "pgoutput",
+    "decimal.handling.mode": "double"
   }
 }'
 
