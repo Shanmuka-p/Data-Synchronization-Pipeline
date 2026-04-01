@@ -1,117 +1,107 @@
 # Real-Time Data Synchronization Pipeline
 
-This project demonstrates a real-time data synchronization pipeline using Change Data Capture (CDC) and the Command Query Responsibility Segregation (CQRS) pattern. The system captures changes from a PostgreSQL database and streams them to a MongoDB read replica via Debezium and Kafka.
+**Project Submission**
 
-## Architecture
+This project demonstrates a production-grade, real-time data synchronization pipeline using Change Data Capture (CDC) and the Command Query Responsibility Segregation (CQRS) pattern. The system captures changes from a PostgreSQL database and streams them to a MongoDB read replica via Debezium and Kafka.
+
+---
+
+## 🚀 Evaluator's Quick Start Guide
+
+Follow these exact steps to clone, build, and test the entire pipeline from scratch.
+
+### Step 1: Clone the Repository
+Open your terminal and clone this project to your local machine:
+\`\`\`bash
+git clone https://github.com/Shanmuka-p/Data-Synchronization-Pipeline.git
+cd Data-Synchronization-Pipeline
+\`\`\`
+
+### Step 2: Configure Environment Variables
+Create your `.env` file from the provided template:
+\`\`\`bash
+cp .env.example .env
+\`\`\`
+
+### Step 3: Build and Start the Microservices
+Ensure Docker Desktop is running, then spin up the 7-container infrastructure (Postgres, Mongo, Zookeeper, Kafka, Connect, Write-Service, and Read-Service):
+\`\`\`bash
+docker-compose up -d --build
+\`\`\`
+*Wait approximately 30-45 seconds for the Kafka Connect service to finish booting and become healthy.*
+
+### Step 4: Initialize the CDC Pipeline
+Register the Debezium connector so it begins monitoring the PostgreSQL Write-Ahead Log (WAL):
+\`\`\`bash
+bash setup-debezium.sh
+\`\`\`
+*You should receive a `201 Created` JSON response confirming the connector is registered.*
+
+### Step 5: Test the End-to-End Synchronization
+Copy and paste these exact commands to verify data is flowing from Postgres -> Kafka -> MongoDB. 
+
+**A. Insert a product into the Write Service (PostgreSQL):**
+\`\`\`bash
+curl -X POST http://127.0.0.1:9000/api/products -H "Content-Type: application/json" -d "{\"name\":\"Mechanical Keyboard\",\"price\":120.50,\"category\":\"Electronics\",\"stock\":50}"
+\`\`\`
+
+**B. Query the Read Service (MongoDB) to verify synchronization:**
+*Wait 2-3 seconds for the event to stream, then run:*
+\`\`\`bash
+curl -X GET "http://127.0.0.1:9001/api/products/search?query=Keyboard"
+\`\`\`
+*You should receive a JSON array containing the newly created Mechanical Keyboard.*
+
+---
+
+## 🏗️ Architecture & Data Flow
+
+
 
 The architecture consists of the following components:
+1.  **Write Service (Port 9000)**: A Node.js application responsible for handling all write operations to PostgreSQL.
+2.  **PostgreSQL**: The primary, authoritative database.
+3.  **Debezium**: A CDC tool monitoring the PostgreSQL WAL for data changes.
+4.  **Kafka**: A distributed event streaming platform handling the Debezium payload.
+5.  **Read Service (Port 9001)**: An idempotent Node.js Kafka consumer that updates MongoDB.
+6.  **MongoDB**: The denormalized, read-optimized data store.
 
-- **Write Service**: A Node.js application responsible for handling all write operations (Create, Update, Delete) to the PostgreSQL database.
-- **PostgreSQL**: The primary database that stores the authoritative data.
-- **Debezium**: A CDC tool that monitors the PostgreSQL write-ahead log (WAL) for any data changes.
-- **Kafka**: A distributed streaming platform that receives change events from Debezium.
-- **Read Service**: A Node.js application that consumes change events from Kafka and updates a MongoDB database, which serves as a read-optimized data store.
-- **MongoDB**: The read database, providing fast and efficient query capabilities.
+---
 
-### Data Flow
+## 📡 Full API Reference
 
-1.  A write operation is sent to the **Write Service**.
-2.  The **Write Service** persists the change to the **PostgreSQL** database.
-3.  **Debezium** captures this change from the PostgreSQL WAL and publishes a message to a **Kafka** topic.
-4.  The **Read Service** consumes the message from the Kafka topic and updates the **MongoDB** database.
-5.  Read operations are served by the **Read Service** from the **MongoDB** database, ensuring that the write and read operations are separated.
-
-## Prerequisites
-
-- [Docker](https://www.docker.com/get-started)
-- [Docker Compose](https://docs.docker.com/compose/install/)
-
-## Getting Started
-
-### 1. Environment Configuration
-
-Create a `.env` file from the example and customize the variables if needed:
-
-```bash
-cp .env.example .env
-```
-
-### 2. Build and Start Services
-
-Build and start all the services in detached mode using Docker Compose:
-
-```bash
-docker-compose up -d --build
-```
-
-This command will start all the necessary services, including the `write-service`, `read-service`, PostgreSQL, MongoDB, Kafka, and Debezium.
-
-### 3. Setup Debezium Connector
-
-Wait for about 30 seconds for the Kafka Connect service to be ready, then run the following script to set up the Debezium PostgreSQL connector:
-
-```bash
-./setup-debezium.sh
-```
-
-This script registers the connector, which will start monitoring the `products` table in the PostgreSQL database.
-
-## API Endpoints
-
-### Write Service (`http://localhost:9000`)
+### Write Service (`http://127.0.0.1:9000`)
+Handles all "Command" operations.
 
 - **Create a Product**
   - **POST** `/api/products`
-  - **Body**: 
-    ```json
-    {
-      "name": "Laptop",
-      "price": 1200.00,
-      "category": "Electronics",
-      "stock": 50
-    }
-    ```
-
+  - **Body**: `{"name": "Laptop", "price": 1200.00, "category": "Electronics", "stock": 50}`
 - **Update a Product**
   - **PUT** `/api/products/:id`
-  - **Body**: 
-    ```json
-    {
-      "name": "Gaming Laptop",
-      "price": 1500.00,
-      "category": "Electronics",
-      "stock": 40
-    }
-    ```
-
+  - **Body**: `{"name": "Gaming Laptop", "price": 1500.00, "category": "Electronics", "stock": 40}`
 - **Soft Delete a Product**
-  - **DELETE** `/api/products/:id`
+  - **DELETE** `/api/products/:id` *(Sets `deleted_at` timestamp rather than hard deleting)*
 
-### Read Service (`http://localhost:9001`)
+### Read Service (`http://127.0.0.1:9001`)
+Handles all "Query" operations and sync monitoring.
 
-- **Search for Products**
+- **Search Products (Filters out soft-deleted items)**
   - **GET** `/api/products/search?query=<search_term>`
-
-- **Get Products by Category**
+- **Filter by Category**
   - **GET** `/api/products/category/:category`
-
-- **Get Sync Status**
+- **Check Kafka Sync Status**
   - **GET** `/api/sync/status`
+- **Trigger Full Re-sync (Database Rebuild)**
+  - **POST** `/api/sync/reset` *(Drops MongoDB and resets Kafka consumer to offset 0)*
 
-- **Reset Read Model**
-  - **POST** `/api/sync/reset`
+---
 
-## Environment Variables
+## ⚙️ Environment Variables Reference
+Located in `.env.example`:
 
-The following environment variables are used to configure the application. They are defined in the `.env.example` file.
-
-| Variable                | Description                                        | Default Value        |
-| ----------------------- | -------------------------------------------------- | -------------------- |
-| `POSTGRES_DB`           | PostgreSQL database name.                          | `products_db`        |
-| `POSTGRES_USER`         | PostgreSQL username.                               | `user`               |
-| `POSTGRES_PASSWORD`     | PostgreSQL password.                               | `password`           |
-| `MONGO_INITDB_DATABASE` | MongoDB database name.                             | `products_read_db`   |
-| `WRITE_SERVICE_PORT`    | Port for the Write Service.                        | `9000`               |
-| `READ_SERVICE_PORT`     | Port for the Read Service.                         | `9001`               |
-| `KAFKA_BROKERS`         | Comma-separated list of Kafka brokers.             | `kafka:29092`        |
-| `KAFKA_TOPIC`           | Kafka topic for product change events.             | `pg-server.public.products` |
+| Variable                | Description                                        | Default Value |
+| ----------------------- | -------------------------------------------------- | ------------- |
+| `POSTGRES_DB`           | PostgreSQL database name.                          | `products_db` |
+| `MONGO_INITDB_DATABASE` | MongoDB database name.                             | `products_read_db` |
+| `WRITE_SERVICE_PORT`    | Port for the Node.js Write Service.                | `9000`        |
+| `READ_SERVICE_PORT`     | Port for the Node.js Read Service.                 | `9001`        |
